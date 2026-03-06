@@ -15,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.fruko.usagestatsdisplayer.presentation.details.DetailsScreen
 import com.fruko.usagestatsdisplayer.presentation.home.HomeScreen
 import com.fruko.usagestatsdisplayer.presentation.settings.SettingsScreen
 
@@ -54,10 +55,17 @@ fun MainScreen() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Home.route) {
-                HomeScreen()
+                HomeScreen(
+                    onNavigateToDetails = { pkg ->
+                        navController.navigate("details/$pkg")
+                    }
+                )
             }
             composable(Screen.Settings.route) {
                 SettingsScreen()
+            }
+            composable("details/{packageName}") {
+                DetailsScreen(onBackClick = { navController.popBackStack() })
             }
         }
     }

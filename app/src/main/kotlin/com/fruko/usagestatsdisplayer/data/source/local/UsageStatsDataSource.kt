@@ -1,15 +1,20 @@
 package com.fruko.usagestatsdisplayer.data.source.local
 
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.fruko.usagestatsdisplayer.domain.model.DailyUsage
 import com.fruko.usagestatsdisplayer.domain.model.TimeFrame
+import com.fruko.usagestatsdisplayer.domain.model.UsageSession
 import com.fruko.usagestatsdisplayer.domain.model.UsageStatInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 import javax.inject.Inject
 
 class UsageStatsDataSource @Inject constructor(
@@ -98,5 +103,72 @@ class UsageStatsDataSource @Inject constructor(
                 }
             }
         }
+    }
+
+    suspend fun getAppSessions(
+        packageName: String,
+        timeFrame: TimeFrame
+    ): List<DailyUsage> = withContext(Dispatchers.IO) {
+        val endTime = System.currentTimeMillis()
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = endTime
+        calendar.add(Calendar.DAY_OF_YEAR, -timeFrame.days)
+        val startTime = calendar.timeInMillis
+
+        val events = usageStatsManager.queryEvents(startTime, endTime)
+        val usageEvents = mutableListOf<UsageEvents.Event>()
+
+        while (events.hasNextEvent()) {
+            val event = UsageEvents.Event()
+            events.getNextEvent(event)
+            if (event.packageName == packageName &&
+                (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
+                 event.eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
+                 event.eventType == UsageEvents.Event.ACTIVITY_STOPPED)
+            ) {
+                usageEvents.add(event)
+            }
+        }
+
+        // Build sessions from paired RESUMED/PAUSED events
+        val sessions = mutableListOf<UsageSession>()
+        var currentSessionStart = 0L
+
+        for (event in usageEvents) {
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    if (currentSessionStart == 0L) {
+                        currentSessionStart = event.timeStamp
+                    }
+                }
+                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
+                    if (currentSessionStart != 0L && event.timeStamp > currentSessionStart) {
+                        if (event.timeStamp >= currentSessionStart + 5000) {
+                            sessions.add(UsageSession(currentSessionStart, event.timeStamp))
+                        }
+                        currentSessionStart = 0L
+                    }
+                }
+            }
+        }
+        // If still in foreground at end of range, cap the session
+        if (currentSessionStart != 0L) {
+            sessions.add(UsageSession(currentSessionStart, endTime))
+        }
+
+        // Group sessions by day label; sessions spanning midnight get a combined label
+        val dateFormat = SimpleDateFormat("MMMM d", Locale.getDefault())
+        val grouped = sessions
+            .groupBy { session ->
+                val startDay = dateFormat.format(session.startTime)
+                val endDay = dateFormat.format(session.endTime)
+                if (startDay == endDay) startDay else "$startDay - $endDay"
+            }
+            .map { (dayLabel, daySessions) ->
+                DailyUsage(dayLabel, daySessions.sortedByDescending { it.startTime })
+            }
+            .sortedByDescending { it.sessions.firstOrNull()?.startTime ?: 0L }
+
+        grouped
     }
 }

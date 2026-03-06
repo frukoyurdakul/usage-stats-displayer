@@ -1,5 +1,6 @@
 package com.fruko.usagestatsdisplayer.presentation.home
 
+import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fruko.usagestatsdisplayer.domain.model.SortOption
@@ -32,7 +33,8 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val usageStatsRepository: UsageStatsRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val packageManager: PackageManager
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -85,7 +87,8 @@ class HomeViewModel @Inject constructor(
                         appName = info.appName,
                         totalUsageText = totalUsageText,
                         averageUsageText = averageUsageText,
-                        maxUsageText = maxUsageText
+                        maxUsageText = maxUsageText,
+                        icon = packageManager.getApplicationIcon(info.packageName)
                     )
                 }
 

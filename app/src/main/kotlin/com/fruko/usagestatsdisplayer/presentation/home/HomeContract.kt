@@ -1,5 +1,6 @@
 package com.fruko.usagestatsdisplayer.presentation.home
 
+import android.graphics.drawable.Drawable
 import com.fruko.usagestatsdisplayer.domain.model.SortOption
 import com.fruko.usagestatsdisplayer.domain.model.TimeFrame
 
@@ -9,7 +10,8 @@ data class UsageStatUiModel(
     val appName: String,
     val totalUsageText: String,
     val averageUsageText: String?,
-    val maxUsageText: String?
+    val maxUsageText: String?,
+    val icon: Drawable?
 )
 
 data class HomeState(

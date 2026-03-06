@@ -2,6 +2,7 @@ package com.fruko.usagestatsdisplayer.di
 
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
@@ -28,5 +29,11 @@ object AppModule {
     @Singleton
     fun provideUsageStatsManager(@ApplicationContext context: Context): UsageStatsManager {
         return context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    }
+
+    @Provides
+    @Singleton
+    fun providePackageManager(@ApplicationContext context: Context): PackageManager {
+        return context.packageManager
     }
 }

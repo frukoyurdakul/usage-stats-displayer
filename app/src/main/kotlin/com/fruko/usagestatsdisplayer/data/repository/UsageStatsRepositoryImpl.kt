@@ -1,6 +1,7 @@
 package com.fruko.usagestatsdisplayer.data.repository
 
 import com.fruko.usagestatsdisplayer.data.source.local.UsageStatsDataSource
+import com.fruko.usagestatsdisplayer.domain.model.DailyUsage
 import com.fruko.usagestatsdisplayer.domain.model.SortOption
 import com.fruko.usagestatsdisplayer.domain.model.TimeFrame
 import com.fruko.usagestatsdisplayer.domain.model.UsageStatInfo
@@ -36,5 +37,15 @@ class UsageStatsRepositoryImpl @Inject constructor(
         }
         
         emit(sortedStats)
+    }.flowOn(Dispatchers.Default)
+
+    override fun getAppSessions(packageName: String, timeFrame: TimeFrame): Flow<List<DailyUsage>> = flow {
+        emit(dataSource.getAppSessions(packageName, timeFrame))
+    }.flowOn(Dispatchers.Default)
+
+    override fun getAppUsage(packageName: String, timeFrame: TimeFrame): Flow<UsageStatInfo?> = flow {
+        val stat = dataSource.getUsageStats(timeFrame, includeSystemApps = true)
+            .find { it.packageName == packageName }
+        emit(stat)
     }.flowOn(Dispatchers.Default)
 }

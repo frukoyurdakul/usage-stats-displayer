@@ -1,9 +1,10 @@
 package com.fruko.usagestatsdisplayer.presentation.home
 
 import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedFilterChip
@@ -36,7 +36,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,7 +66,8 @@ fun hasUsageStatsPermission(context: Context): Boolean {
 
 @Composable
 fun HomeScreen(
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HomeViewModel = hiltViewModel(),
+    onNavigateToDetails: (String) -> Unit = {}
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -111,20 +111,23 @@ fun HomeScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = {
-                val isOculus = android.os.Build.MANUFACTURER.contains("Oculus", ignoreCase = true) || 
-                               android.os.Build.MANUFACTURER.contains("Meta", ignoreCase = true)
+                val isOculus = Build.MANUFACTURER.contains("Oculus", ignoreCase = true) ||
+                               Build.MANUFACTURER.contains("Meta", ignoreCase = true)
                 
                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 if (isOculus) {
-                    intent.setComponent(android.content.ComponentName(
-                        "com.android.settings", 
-                        "com.android.settings.Settings\$UsageAccessSettingsActivity"
-                    ))
+                    intent.setComponent(
+                        ComponentName(
+                            "com.android.settings",
+                            "com.android.settings.Settings\$UsageAccessSettingsActivity"
+                        )
+                    )
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 
                 try {
                     context.startActivity(intent)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // Fallback to default behavior if explicit component targeting fails
                     context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                 }
@@ -195,33 +198,29 @@ fun HomeScreen(
         }
         
         Spacer(modifier = Modifier.height(8.dp))
-
-        if (state.isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(state.usageStats, key = { it.packageName }) { model ->
-                    UsageStatItem(model = model)
-                }
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(state.usageStats, key = { it.packageName }) { model ->
+                UsageStatItem(
+                    model = model,
+                    onClick = { onNavigateToDetails(model.packageName) }
+                )
             }
         }
     }
 }
 
 @Composable
-fun UsageStatItem(model: UsageStatUiModel) {
+fun UsageStatItem(
+    model: UsageStatUiModel,
+    onClick: () -> Unit = {}
+) {
     val context = LocalContext.current
-    val icon = remember(model.packageName) {
-        try {
-            context.packageManager.getApplicationIcon(model.packageName)
-        } catch (e: PackageManager.NameNotFoundException) {
-            null
-        }
-    }
+    val icon = model.icon
 
-    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        onClick = onClick
+    ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
