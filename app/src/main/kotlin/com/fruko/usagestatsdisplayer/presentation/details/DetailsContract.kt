@@ -20,6 +20,7 @@ data class DetailsState(
     val timeFrame: TimeFrame = TimeFrame.DAILY,
     val icon: Drawable? = null,
     val appName: String = "",
+    val totalUsageText: String = "",
     val averageUsageText: String = "",
     val peakDayText: String? = null,
     val dailyUsages: List<DailyUsageUiModel> = emptyList()

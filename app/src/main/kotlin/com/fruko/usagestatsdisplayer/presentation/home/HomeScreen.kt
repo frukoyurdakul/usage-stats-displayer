@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,8 +50,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.fruko.usagestatsdisplayer.domain.model.SortOption
 import com.fruko.usagestatsdisplayer.domain.model.TimeFrame
 import kotlinx.coroutines.delay
@@ -199,7 +198,7 @@ fun HomeScreen(
         }
         
         Spacer(modifier = Modifier.height(8.dp))
-        key(state.usageStats) {
+        key(state.sortOption, state.timeFrame) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(state.usageStats, key = { it.packageName }) { model ->
                     UsageStatItem(
@@ -229,11 +228,8 @@ fun UsageStatItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (icon != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(icon)
-                        .crossfade(true)
-                        .build(),
+                Image(
+                    bitmap = icon,
                     contentDescription = model.appName,
                     modifier = Modifier.size(48.dp)
                 )

@@ -86,6 +86,12 @@ fun DetailsScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
+                        if (state.totalUsageText.isNotEmpty()) {
+                            Text(
+                                text = "Total: ${state.totalUsageText}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                         val peakDayText = state.peakDayText
                         if (peakDayText != null) {
                             Text(

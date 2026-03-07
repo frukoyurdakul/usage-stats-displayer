@@ -76,6 +76,7 @@ class DetailsViewModel @Inject constructor(
                 it.copy(
                     isLoading = false,
                     appName = appName,
+                    totalUsageText = appUsage?.let { u -> formatDuration(u.totalTimeInForeground) } ?: "",
                     averageUsageText = appUsage?.let { u -> formatDuration(u.averageTime) } ?: "",
                     peakDayText = appUsage?.toPeakText(),
                     dailyUsages = dailyUiModels

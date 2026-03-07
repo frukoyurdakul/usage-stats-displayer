@@ -19,37 +19,100 @@ class UsageStatsDataSource @Inject constructor(
     private val usageStatsManager: UsageStatsManager,
     private val packageManager: PackageManager,
 ) {
+    /**
+     * Build sessions from the raw event stream for a single package.
+     *
+     * Strategy:
+     *  - ACTIVITY_RESUMED  → session opens for this package
+     *  - ACTIVITY_PAUSED / ACTIVITY_STOPPED for this package → session closes
+     *  - SCREEN_NON_INTERACTIVE (device screen off) → closes any open session for this package,
+     *    because the user cannot be actively using the app when the screen is off
+     *
+     * Sessions shorter than 5 s are discarded as spurious.
+     */
+    private fun buildSessions(
+        events: List<UsageEvents.Event>,
+        targetPackage: String,
+        rangeEndTime: Long
+    ): List<UsageSession> {
+        val sessions = mutableListOf<UsageSession>()
+        var sessionStart = 0L
+
+        for (event in events) {
+            when (event.packageName) {
+                targetPackage if event.eventType == UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    if (sessionStart == 0L) sessionStart = event.timeStamp
+                }
+
+                // App went to background (explicit pause/stop)
+                targetPackage if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
+                        event.eventType == UsageEvents.Event.ACTIVITY_STOPPED) -> {
+                    if (sessionStart != 0L) {
+                        val end = event.timeStamp
+                        if (end >= sessionStart + 5_000L) {
+                            sessions.add(UsageSession(sessionStart, end))
+                        }
+                        sessionStart = 0L
+                    }
+                }
+            }
+        }
+
+        // App is still in foreground at the end of the queried range
+        if (sessionStart != 0L) {
+            if (rangeEndTime >= sessionStart + 5_000L) {
+                sessions.add(UsageSession(sessionStart, rangeEndTime))
+            }
+        }
+
+        return sessions
+    }
+
+    /**
+     * Collect all relevant raw events in chronological order for the given time window.
+     *
+     * Events collected:
+     *  - ACTIVITY_RESUMED / ACTIVITY_PAUSED / ACTIVITY_STOPPED   (all packages)
+     *  - SCREEN_NON_INTERACTIVE                                   (system, no package name)
+     */
+    private fun collectEvents(startTime: Long, endTime: Long): List<UsageEvents.Event> {
+        val raw = usageStatsManager.queryEvents(startTime, endTime)
+        val result = mutableListOf<UsageEvents.Event>()
+        while (raw.hasNextEvent()) {
+            val event = UsageEvents.Event()
+            raw.getNextEvent(event)
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED,
+                UsageEvents.Event.ACTIVITY_PAUSED,
+                UsageEvents.Event.ACTIVITY_STOPPED -> result.add(event)
+            }
+        }
+        return result
+    }
+
     suspend fun getUsageStats(
         timeFrame: TimeFrame,
         includeSystemApps: Boolean
     ): List<UsageStatInfo> = withContext(Dispatchers.IO) {
         val endTime = System.currentTimeMillis()
-        val calendar = Calendar.getInstance()
-        calendar.timeInMillis = endTime
-        calendar.add(Calendar.DAY_OF_YEAR, -timeFrame.days)
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = endTime
+            add(Calendar.DAY_OF_YEAR, -timeFrame.days)
+        }
         val startTime = calendar.timeInMillis
 
-        // Get exact total aggregations
-        val aggregatedStats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+        val events = collectEvents(startTime, endTime)
 
-        // Retrieve daily stats to get max usage per day
-        val dailyStatsList = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            startTime,
-            endTime
-        )
+        // Discover every package that had at least one ACTIVITY_RESUMED event
+        val packages = events
+            .filter { it.eventType == UsageEvents.Event.ACTIVITY_RESUMED }
+            .map { it.packageName }
+            .toSet()
 
-        if (aggregatedStats.isNullOrEmpty()) {
-            return@withContext emptyList()
-        }
-
-        val dailyGroups = dailyStatsList?.groupBy { it.packageName } ?: emptyMap()
+        val dayFormat = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
 
         buildList {
-            for (stat in aggregatedStats.values) {
-                val packageName = stat.packageName
-
-                // Filter out apps with no launcher icons
+            for (packageName in packages) {
                 if (packageManager.getLaunchIntentForPackage(packageName) == null) continue
 
                 val appInfo = try {
@@ -59,45 +122,38 @@ class UsageStatsDataSource @Inject constructor(
                 }
 
                 val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                if (!includeSystemApps && isSystemApp) {
-                    continue
-                }
+                if (!includeSystemApps && isSystemApp) continue
 
                 val appName = packageManager.getApplicationLabel(appInfo).toString()
-                val totalTime = stat.totalTimeInForeground
-                
+                val sessions = buildSessions(events, packageName, endTime)
+                if (sessions.isEmpty()) continue
+
+                val totalTime = sessions.sumOf { it.durationMillis }
+
+                // Group by calendar day to find the peak day
+                val byDay = sessions.groupBy { dayFormat.format(it.startTime) }
                 var maxUsageInDay = 0L
                 var maxUsageDayTimestamp = 0L
-
-                val packageDailyStats = dailyGroups[packageName]
-                if (packageDailyStats != null) {
-                    for (dailyStat in packageDailyStats) {
-                        // Ensure this is a Daily bucket (roughly <= 2 days)
-                        // Otherwise, Android has rolled older days into weekly/monthly buckets
-                        val bucketDuration = dailyStat.lastTimeStamp - dailyStat.firstTimeStamp
-                        if (bucketDuration <= 1000L * 60 * 60 * 24 * 2) {
-                            val dayUsage = dailyStat.totalTimeInForeground
-                            if (dayUsage > maxUsageInDay) {
-                                maxUsageInDay = dayUsage
-                                maxUsageDayTimestamp = dailyStat.firstTimeStamp
-                            }
-                        }
+                for ((_, daySessions) in byDay) {
+                    val dayTotal = daySessions.sumOf { it.durationMillis }
+                    if (dayTotal > maxUsageInDay) {
+                        maxUsageInDay = dayTotal
+                        maxUsageDayTimestamp = daySessions.first().startTime
                     }
                 }
 
-                if (totalTime > 0) {
-                    val averageTime = totalTime / timeFrame.days
-                    add(
-                        UsageStatInfo(
-                            packageName = packageName,
-                            appName = appName,
-                            totalTimeInForeground = totalTime,
-                            averageTime = averageTime,
-                            maxUsageInDay = maxUsageInDay,
-                            maxUsageDayTimestamp = maxUsageDayTimestamp
-                        )
+                val averageTime = totalTime / timeFrame.days
+
+                add(
+                    UsageStatInfo(
+                        packageName = packageName,
+                        appName = appName,
+                        totalTimeInForeground = totalTime,
+                        averageTime = averageTime,
+                        maxUsageInDay = maxUsageInDay,
+                        maxUsageDayTimestamp = maxUsageDayTimestamp
                     )
-                }
+                )
             }
         }
     }
@@ -107,53 +163,15 @@ class UsageStatsDataSource @Inject constructor(
         timeFrame: TimeFrame
     ): List<DailyUsage> = withContext(Dispatchers.IO) {
         val endTime = System.currentTimeMillis()
-        val calendar = Calendar.getInstance()
-        calendar.timeInMillis = endTime
-        calendar.add(Calendar.DAY_OF_YEAR, -timeFrame.days)
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = endTime
+            add(Calendar.DAY_OF_YEAR, -timeFrame.days)
+        }
         val startTime = calendar.timeInMillis
 
-        val events = usageStatsManager.queryEvents(startTime, endTime)
-        val usageEvents = mutableListOf<UsageEvents.Event>()
+        val events = collectEvents(startTime, endTime)
+        val sessions = buildSessions(events, packageName, endTime)
 
-        while (events.hasNextEvent()) {
-            val event = UsageEvents.Event()
-            events.getNextEvent(event)
-            if (event.packageName == packageName &&
-                (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
-                 event.eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
-                 event.eventType == UsageEvents.Event.ACTIVITY_STOPPED)
-            ) {
-                usageEvents.add(event)
-            }
-        }
-
-        // Build sessions from paired RESUMED/PAUSED events
-        val sessions = mutableListOf<UsageSession>()
-        var currentSessionStart = 0L
-
-        for (event in usageEvents) {
-            when (event.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    if (currentSessionStart == 0L) {
-                        currentSessionStart = event.timeStamp
-                    }
-                }
-                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
-                    if (currentSessionStart != 0L && event.timeStamp > currentSessionStart) {
-                        if (event.timeStamp >= currentSessionStart + 5000) {
-                            sessions.add(UsageSession(currentSessionStart, event.timeStamp))
-                        }
-                        currentSessionStart = 0L
-                    }
-                }
-            }
-        }
-        // If still in foreground at end of range, cap the session
-        if (currentSessionStart != 0L) {
-            sessions.add(UsageSession(currentSessionStart, endTime))
-        }
-
-        // Group sessions by day label; sessions spanning midnight get a combined label
         val dateFormat = SimpleDateFormat("MMMM d", Locale.getDefault())
         sessions
             .groupBy { session ->

@@ -1,12 +1,14 @@
 package com.fruko.usagestatsdisplayer.presentation.home
 
 import android.content.pm.PackageManager
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fruko.usagestatsdisplayer.domain.model.SortOption
 import com.fruko.usagestatsdisplayer.domain.model.TimeFrame
 import com.fruko.usagestatsdisplayer.domain.repository.SettingsRepository
 import com.fruko.usagestatsdisplayer.domain.repository.UsageStatsRepository
+import com.fruko.usagestatsdisplayer.ext.asBitmap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -90,7 +92,11 @@ class HomeViewModel @Inject constructor(
                         totalUsageText = totalUsageText,
                         averageUsageText = averageUsageText,
                         maxUsageText = maxUsageText,
-                        icon = packageManager.getApplicationIcon(info.packageName)
+                        icon = runCatching {
+                            packageManager.getApplicationIcon(info.packageName)
+                                .asBitmap()
+                                .asImageBitmap()
+                        }.getOrNull()
                     )
                 }
 
