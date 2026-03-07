@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -67,7 +68,7 @@ fun hasUsageStatsPermission(context: Context): Boolean {
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
-    onNavigateToDetails: (String) -> Unit = {}
+    onNavigateToDetails: (String, String) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -198,12 +199,14 @@ fun HomeScreen(
         }
         
         Spacer(modifier = Modifier.height(8.dp))
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(state.usageStats, key = { it.packageName }) { model ->
-                UsageStatItem(
-                    model = model,
-                    onClick = { onNavigateToDetails(model.packageName) }
-                )
+        key(state.usageStats) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(state.usageStats, key = { it.packageName }) { model ->
+                    UsageStatItem(
+                        model = model,
+                        onClick = { onNavigateToDetails(model.packageName, model.appName) }
+                    )
+                }
             }
         }
     }

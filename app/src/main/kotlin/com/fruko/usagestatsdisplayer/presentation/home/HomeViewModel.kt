@@ -41,6 +41,8 @@ class HomeViewModel @Inject constructor(
     private val _hasPermission = MutableStateFlow(false)
     private val _forceRefresh = MutableStateFlow(0) // Trigger manual refresh
 
+    private var cachedList: List<UsageStatUiModel> = emptyList()
+
     private val dateFormat = SimpleDateFormat("MMM dd", Locale.getDefault())
 
     private fun formatTime(millis: Long): String {
@@ -92,6 +94,7 @@ class HomeViewModel @Inject constructor(
                     )
                 }
 
+                cachedList = uiModels
                 HomeState(
                     isLoading = false,
                     hasPermission = true,
@@ -105,6 +108,7 @@ class HomeViewModel @Inject constructor(
                     HomeState(
                         isLoading = true,
                         hasPermission = true,
+                        usageStats = cachedList,
                         timeFrame = p.tf,
                         sortOption = p.so,
                         searchQuery = p.sq,

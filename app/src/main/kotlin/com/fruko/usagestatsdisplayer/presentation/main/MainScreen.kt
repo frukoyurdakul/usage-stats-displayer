@@ -56,15 +56,15 @@ fun MainScreen() {
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
-                    onNavigateToDetails = { pkg ->
-                        navController.navigate("details/$pkg")
+                    onNavigateToDetails = { pkg, app ->
+                        navController.navigate("details/$pkg/$app")
                     }
                 )
             }
             composable(Screen.Settings.route) {
                 SettingsScreen()
             }
-            composable("details/{packageName}") {
+            composable("details/{packageName}/{appName}") {
                 DetailsScreen(onBackClick = { navController.popBackStack() })
             }
         }

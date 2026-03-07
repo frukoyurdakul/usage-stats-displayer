@@ -29,11 +29,14 @@ class DetailsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val packageName: String = checkNotNull(savedStateHandle["packageName"])
+    private val appName: String = checkNotNull(savedStateHandle["appName"])
 
     private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val dayFormat = SimpleDateFormat("MMMM d", Locale.getDefault())
 
-    private val _state = MutableStateFlow(DetailsState(packageName = packageName))
+    private val _state = MutableStateFlow(
+        DetailsState(packageName = packageName, appName = appName)
+    )
     val state: StateFlow<DetailsState> = _state.asStateFlow()
 
     init {
@@ -56,7 +59,6 @@ class DetailsViewModel @Inject constructor(
                 _state.update { it.copy(timeFrame = event.timeFrame) }
                 loadData()
             }
-            DetailsEvent.RefreshRequested -> loadData()
         }
     }
 
@@ -73,7 +75,7 @@ class DetailsViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     isLoading = false,
-                    appName = appUsage?.appName ?: packageName,
+                    appName = appName,
                     averageUsageText = appUsage?.let { u -> formatDuration(u.averageTime) } ?: "",
                     peakDayText = appUsage?.toPeakText(),
                     dailyUsages = dailyUiModels

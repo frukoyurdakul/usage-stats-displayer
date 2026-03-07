@@ -26,6 +26,5 @@ data class DetailsState(
 )
 
 sealed class DetailsEvent {
-    object RefreshRequested : DetailsEvent()
     data class TimeFrameChanged(val timeFrame: TimeFrame) : DetailsEvent()
 }

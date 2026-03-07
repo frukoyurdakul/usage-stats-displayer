@@ -2,14 +2,12 @@ package com.fruko.usagestatsdisplayer.data.source.local
 
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.fruko.usagestatsdisplayer.domain.model.DailyUsage
 import com.fruko.usagestatsdisplayer.domain.model.TimeFrame
 import com.fruko.usagestatsdisplayer.domain.model.UsageSession
 import com.fruko.usagestatsdisplayer.domain.model.UsageStatInfo
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -19,13 +17,12 @@ import javax.inject.Inject
 
 class UsageStatsDataSource @Inject constructor(
     private val usageStatsManager: UsageStatsManager,
-    @ApplicationContext private val context: Context
+    private val packageManager: PackageManager,
 ) {
     suspend fun getUsageStats(
         timeFrame: TimeFrame,
         includeSystemApps: Boolean
     ): List<UsageStatInfo> = withContext(Dispatchers.IO) {
-        val packageManager = context.packageManager
         val endTime = System.currentTimeMillis()
         val calendar = Calendar.getInstance()
         calendar.timeInMillis = endTime
@@ -158,7 +155,7 @@ class UsageStatsDataSource @Inject constructor(
 
         // Group sessions by day label; sessions spanning midnight get a combined label
         val dateFormat = SimpleDateFormat("MMMM d", Locale.getDefault())
-        val grouped = sessions
+        sessions
             .groupBy { session ->
                 val startDay = dateFormat.format(session.startTime)
                 val endDay = dateFormat.format(session.endTime)
@@ -168,7 +165,5 @@ class UsageStatsDataSource @Inject constructor(
                 DailyUsage(dayLabel, daySessions.sortedByDescending { it.startTime })
             }
             .sortedByDescending { it.sessions.firstOrNull()?.startTime ?: 0L }
-
-        grouped
     }
 }
